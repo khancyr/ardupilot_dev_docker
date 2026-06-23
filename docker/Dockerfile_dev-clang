@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 ARG TAG="latest"
-FROM ardupilot/ardupilot-dev-base:${TAG}
-ENV CLANG_VERSION=14
+FROM ardupilot/ardupilot-dev-base:"${TAG}"
+ENV CLANG_VERSION=18
 
 RUN apt-get update && apt-get install --no-install-recommends -y \
     clang-"$CLANG_VERSION" \

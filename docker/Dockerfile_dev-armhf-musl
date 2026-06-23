@@ -1,28 +1,28 @@
 # syntax=docker/dockerfile:1
 ARG TAG="latest"
-FROM ardupilot/ardupilot-dev-armhf:${TAG}
+FROM ardupilot/ardupilot-dev-armhf:"${TAG}"
 
 # Get ArduPilot MUSL ARM toolchain
 ARG MUSL_ROOT="arm-linux-musleabihf-cross"
-ARG MUSL_TARBALL="$MUSL_ROOT.tgz"
+ARG MUSL_TARBALL="${MUSL_ROOT}.tgz"
 # ARG MUSL_TARBALL_URL="https://musl.cc/$MUSL_TARBALL"  # Seems prevent github actions from accessing the URL
-ARG MUSL_TARBALL_URL="https://github.com/ArduPilot/ardupilot_dev_docker/releases/download/v0.1.4/$MUSL_TARBALL"
+ARG MUSL_TARBALL_URL="https://github.com/ArduPilot/ardupilot_dev_docker/releases/download/v0.1.4/${MUSL_TARBALL}"
 
 RUN set -eu \
 	&& mkdir -p /opt && cd /opt \
 	# Download to file with retries to avoid truncated archives
-	&& wget -q --tries=5 --timeout=30 -O "$MUSL_TARBALL" "$MUSL_TARBALL_URL" \
-	&& test -s "$MUSL_TARBALL" \
-	&& tar -xzf "$MUSL_TARBALL" \
-	&& rm -f "$MUSL_TARBALL" \
-	&& rm -rf "/opt/$MUSL_ROOT/share/doc"
+	&& wget -q --tries=5 --timeout=30 -O "${MUSL_TARBALL}" "${MUSL_TARBALL_URL}" \
+	&& test -s "${MUSL_TARBALL}" \
+	&& tar -xzf "${MUSL_TARBALL}" \
+	&& rm -f "${MUSL_TARBALL}" \
+	&& rm -rf "/opt/${MUSL_ROOT}/share/doc"
 
 # manual ccache setup for new toolchain
 RUN ln -s /usr/bin/ccache /usr/lib/ccache/arm-linux-musleabihf-g++ \
 	&& ln -s /usr/bin/ccache /usr/lib/ccache/arm-linux-musleabihf-gcc
 
 # Set MUSL toolchain to the PATH
-ENV PATH="/opt/$MUSL_ROOT/bin:$PATH"
+ENV PATH="/opt/${MUSL_ROOT}/bin:$PATH"
 
 # Set ccache to the PATH
 ENV PATH="/usr/lib/ccache:$PATH"
