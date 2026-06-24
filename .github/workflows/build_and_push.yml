@@ -94,6 +94,7 @@ jobs:
           - armhf
           - aarch64
           - coverage
+          - esp32
           # - chibios-py2 # Deprecated
     steps:
       - uses: actions/checkout@v4
