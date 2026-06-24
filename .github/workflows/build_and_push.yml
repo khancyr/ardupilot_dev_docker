@@ -19,16 +19,18 @@ on:
       - '.github/workflows/ros_nightly.yml'
 
 jobs:
-  build-base:
+  build-and-push:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Prepare
         id: prep
         run: |
-          DOCKER_IMAGE=ardupilot/ardupilot-dev-base
           VERSION=noop
           if [ "${{ github.event_name }}" = "schedule" ]; then
             VERSION=nightly
@@ -42,17 +44,7 @@ jobs:
           elif [[ $GITHUB_REF == refs/pull/* ]]; then
             VERSION=pr-${{ github.event.number }}
           fi
-          TAGS="${DOCKER_IMAGE}:${VERSION}"
-          if [[ $VERSION =~ ^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-            MINOR=${VERSION%.*}
-            MAJOR=${MINOR%.*}
-            TAGS="$TAGS,${DOCKER_IMAGE}:${MINOR},${DOCKER_IMAGE}:${MAJOR}"
-          elif [ "${{ github.event_name }}" = "push" ]; then
-            TAGS="$TAGS,${DOCKER_IMAGE}:sha-${GITHUB_SHA::8}"
-          fi
-          echo "img_name=${DOCKER_IMAGE}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
           echo "created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
 
       - name: Login to DockerHub
@@ -62,95 +54,44 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build ardupilot-dev-base images
-        uses: docker/build-push-action@v6
-        with:
-          context: ./
-          file: docker/Dockerfile_dev-base
-          tags: ${{ steps.prep.outputs.tags }}
-          push: ${{ github.event_name != 'pull_request' }}
-          labels: |
-            org.opencontainers.image.title=${{ steps.prep.outputs.img_name }}
-            org.opencontainers.image.description=${{ github.event.repository.name }}
-            org.opencontainers.image.url=${{ github.event.repository.html_url }}
-            org.opencontainers.image.source=${{ github.event.repository.clone_url }}
-            org.opencontainers.image.version=${{ steps.prep.outputs.version }}
-            org.opencontainers.image.created=${{ steps.prep.outputs.created }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
-            org.label-schema.vcs-ref=${{ github.sha }}
-            org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
-
-  build-main-images:
-    needs: build-base
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - clang
-          - chibios
-          - armhf
-          - aarch64
-          - coverage
-          # - chibios-py2 # Deprecated
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Login to DockerHub
-        if: ${{ github.event_name != 'pull_request' }}
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Prepare
-        id: prep
+      - name: Compute tags
+        id: tags
         run: |
-          DOCKER_IMAGE=ardupilot/ardupilot-dev-${{matrix.config}}
-          DOCKER_IMAGE_BASE=ardupilot/ardupilot-dev-base
-          VERSION=noop
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            VERSION=nightly
-          elif [[ $GITHUB_REF == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/}
-          elif [[ $GITHUB_REF == refs/heads/* ]]; then
-            VERSION=$(echo ${GITHUB_REF#refs/heads/} | sed -r 's#/+#-#g')
-            if [ "${{ github.event.repository.default_branch }}" = "$VERSION" ]; then
-              VERSION=edge
+          VERSION=${{ steps.prep.outputs.version }}
+          # with_latest=1 adds the bare image name (acts as :latest) on version releases
+          make_tags() {
+            local IMAGE=$1 WITH_LATEST=${2:-0}
+            local TAGS="${IMAGE}:${VERSION}"
+            if [[ $VERSION =~ ^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+              local MINOR=${VERSION%.*}
+              local MAJOR=${MINOR%.*}
+              TAGS="$TAGS,${IMAGE}:${MINOR},${IMAGE}:${MAJOR}"
+              [ "$WITH_LATEST" = "1" ] && TAGS="$TAGS,${IMAGE}"
+            elif [ "${{ github.event_name }}" = "push" ]; then
+              TAGS="$TAGS,${IMAGE}:sha-${GITHUB_SHA::8}"
             fi
-          elif [[ $GITHUB_REF == refs/pull/* ]]; then
-            VERSION=pr-${{ github.event.number }}
-          fi
-          TAGS="${DOCKER_IMAGE}:${VERSION}"
-          TAGS_BASE="${DOCKER_IMAGE_BASE}:${VERSION}"
-          if [[ $VERSION =~ ^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-            MINOR=${VERSION%.*}
-            MAJOR=${MINOR%.*}
-            TAGS="$TAGS,${DOCKER_IMAGE}:${MINOR},${DOCKER_IMAGE}:${MAJOR},${DOCKER_IMAGE}"
-            TAGS_BASE="$TAGS_BASE,${DOCKER_IMAGE_BASE}:${MINOR},${DOCKER_IMAGE_BASE}:${MAJOR}"
-          elif [ "${{ github.event_name }}" = "push" ]; then
-            TAGS="$TAGS,${DOCKER_IMAGE}:sha-${GITHUB_SHA::8}"
-            TAGS_BASE="$TAGS_BASE,${DOCKER_IMAGE_BASE}:sha-${GITHUB_SHA::8}"
-          fi
-          echo "img_name=${DOCKER_IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
-          echo "tags_base=${TAGS_BASE}" >> "$GITHUB_OUTPUT"
-          echo "created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+            echo "$TAGS"
+          }
+          BASE=ardupilot/ardupilot-dev
+          echo "base=$(make_tags ${BASE}-base)" >> $GITHUB_OUTPUT
+          echo "clang=$(make_tags ${BASE}-clang 1)" >> $GITHUB_OUTPUT
+          echo "chibios=$(make_tags ${BASE}-chibios 1)" >> $GITHUB_OUTPUT
+          echo "armhf=$(make_tags ${BASE}-armhf 1)" >> $GITHUB_OUTPUT
+          echo "aarch64=$(make_tags ${BASE}-aarch64 1)" >> $GITHUB_OUTPUT
+          echo "coverage=$(make_tags ${BASE}-coverage 1)" >> $GITHUB_OUTPUT
+          echo "armhf_musl=$(make_tags ${BASE}-armhf-musl 1)" >> $GITHUB_OUTPUT
+          echo "periph=$(make_tags ${BASE}-periph 1)" >> $GITHUB_OUTPUT
 
-      - name: ReBuild ardupilot-dev-base image from cache
-        if: ${{ github.event_name == 'pull_request' }}
+      - name: Build ardupilot-dev-base
         uses: docker/build-push-action@v6
         with:
           context: ./
           file: docker/Dockerfile_dev-base
-          tags: ardupilot/ardupilot-dev-base:${{ steps.prep.outputs.version }},ardupilot/ardupilot-dev-base:latest
-          push: false
-          load: true
+          tags: ${{ steps.tags.outputs.base }}
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
           labels: |
-            org.opencontainers.image.title=${{ steps.prep.outputs.img_name }}
+            org.opencontainers.image.title=ardupilot/ardupilot-dev-base
             org.opencontainers.image.description=${{ github.event.repository.name }}
             org.opencontainers.image.url=${{ github.event.repository.html_url }}
             org.opencontainers.image.source=${{ github.event.repository.clone_url }}
@@ -161,23 +102,17 @@ jobs:
             org.label-schema.vcs-ref=${{ github.sha }}
             org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
 
-      - name: Pull Base Docker image
-        if: ${{ github.event_name != 'pull_request' }}
-        run: |
-          docker pull ardupilot/ardupilot-dev-base:${{ steps.prep.outputs.version }}
-          docker tag ardupilot/ardupilot-dev-base:${{ steps.prep.outputs.version }} ardupilot/ardupilot-dev-base:latest
-
-      - name: Build ardupilot-dev-${{matrix.config}} images
+      - name: Build ardupilot-dev-clang
         uses: docker/build-push-action@v6
         with:
           context: ./
-          file: docker/Dockerfile_dev-${{matrix.config}}
-          tags: ${{ steps.prep.outputs.tags }}
+          file: docker/Dockerfile_dev-clang
+          tags: ${{ steps.tags.outputs.clang }}
           push: ${{ github.event_name != 'pull_request' }}
           build-args: "TAG=${{ steps.prep.outputs.version }}"
           pull: false
           labels: |
-            org.opencontainers.image.title=${{ steps.prep.outputs.img_name }}
+            org.opencontainers.image.title=ardupilot/ardupilot-dev-clang
             org.opencontainers.image.description=${{ github.event.repository.name }}
             org.opencontainers.image.url=${{ github.event.repository.html_url }}
             org.opencontainers.image.source=${{ github.event.repository.clone_url }}
@@ -188,75 +123,17 @@ jobs:
             org.label-schema.vcs-ref=${{ github.sha }}
             org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
 
-  build-sub-images:
-    needs: build-main-images
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          # - chibios-clang
-          - armhf-musl
-          - periph
-
-    steps:
-      - uses: actions/checkout@v4
-
-
-      - name: Login to DockerHub
-        if: ${{ github.event_name != 'pull_request' }}
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Prepare
-        id: prep
-        run: |
-          DOCKER_IMAGE=ardupilot/ardupilot-dev-${{matrix.config}}
-          DOCKER_IMAGE_BASE=ardupilot/ardupilot-dev-base
-          VERSION=noop
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            VERSION=nightly
-          elif [[ $GITHUB_REF == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/}
-          elif [[ $GITHUB_REF == refs/heads/* ]]; then
-            VERSION=$(echo ${GITHUB_REF#refs/heads/} | sed -r 's#/+#-#g')
-            if [ "${{ github.event.repository.default_branch }}" = "$VERSION" ]; then
-              VERSION=edge
-            fi
-          elif [[ $GITHUB_REF == refs/pull/* ]]; then
-            VERSION=pr-${{ github.event.number }}
-          fi
-          TAGS="${DOCKER_IMAGE}:${VERSION}"
-          TAGS_BASE="${DOCKER_IMAGE_BASE}:${VERSION}"
-          if [[ $VERSION =~ ^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-            MINOR=${VERSION%.*}
-            MAJOR=${MINOR%.*}
-            TAGS="$TAGS,${DOCKER_IMAGE}:${MINOR},${DOCKER_IMAGE}:${MAJOR}"
-            TAGS_BASE="$TAGS_BASE,${DOCKER_IMAGE_BASE}:${MINOR},${DOCKER_IMAGE_BASE}:${MAJOR}"
-          elif [ "${{ github.event_name }}" = "push" ]; then
-            TAGS="$TAGS,${DOCKER_IMAGE}:sha-${GITHUB_SHA::8}"
-            TAGS_BASE="$TAGS_BASE,${DOCKER_IMAGE_BASE}:sha-${GITHUB_SHA::8}"
-          fi
-          echo "img_name=${DOCKER_IMAGE}" >> $GITHUB_OUTPUT
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
-          echo "tags_base=${TAGS_BASE}" >> $GITHUB_OUTPUT
-          echo "created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
-
-      - name: ReBuild ardupilot-dev-base image from cache
-        if: ${{ github.event_name == 'pull_request' }}
+      - name: Build ardupilot-dev-chibios
         uses: docker/build-push-action@v6
         with:
           context: ./
-          file: docker/Dockerfile_dev-base
-          tags: ardupilot/ardupilot-dev-base:${{ steps.prep.outputs.version }},ardupilot/ardupilot-dev-base:latest
-          push: false
-          load: true
+          file: docker/Dockerfile_dev-chibios
+          tags: ${{ steps.tags.outputs.chibios }}
+          push: ${{ github.event_name != 'pull_request' }}
+          build-args: "TAG=${{ steps.prep.outputs.version }}"
+          pull: false
           labels: |
-            org.opencontainers.image.title=${{ steps.prep.outputs.img_name }}
+            org.opencontainers.image.title=ardupilot/ardupilot-dev-chibios
             org.opencontainers.image.description=${{ github.event.repository.name }}
             org.opencontainers.image.url=${{ github.event.repository.html_url }}
             org.opencontainers.image.source=${{ github.event.repository.clone_url }}
@@ -267,18 +144,18 @@ jobs:
             org.label-schema.vcs-ref=${{ github.sha }}
             org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
 
-      - name: ReBuild ardupilot-dev-armhf image from cache
-        if: ${{ github.event_name == 'pull_request' && matrix.config == 'armhf-musl' }}
+      - name: Build ardupilot-dev-armhf
         uses: docker/build-push-action@v6
         with:
           context: ./
           file: docker/Dockerfile_dev-armhf
-          tags: ardupilot/ardupilot-dev-armhf:${{ steps.prep.outputs.version }},ardupilot/ardupilot-dev-armhf:latest
+          tags: ${{ steps.tags.outputs.armhf }}
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
           build-args: "TAG=${{ steps.prep.outputs.version }}"
-          push: false
-          load: true
+          pull: false
           labels: |
-            org.opencontainers.image.title=${{ steps.prep.outputs.img_name }}
+            org.opencontainers.image.title=ardupilot/ardupilot-dev-armhf
             org.opencontainers.image.description=${{ github.event.repository.name }}
             org.opencontainers.image.url=${{ github.event.repository.html_url }}
             org.opencontainers.image.source=${{ github.event.repository.clone_url }}
@@ -289,18 +166,39 @@ jobs:
             org.label-schema.vcs-ref=${{ github.sha }}
             org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
 
-      - name: ReBuild ardupilot-dev-coverage image from cache
-        if: ${{ github.event_name == 'pull_request' && matrix.config == 'periph' }}
+      - name: Build ardupilot-dev-aarch64
+        uses: docker/build-push-action@v6
+        with:
+          context: ./
+          file: docker/Dockerfile_dev-aarch64
+          tags: ${{ steps.tags.outputs.aarch64 }}
+          push: ${{ github.event_name != 'pull_request' }}
+          build-args: "TAG=${{ steps.prep.outputs.version }}"
+          pull: false
+          labels: |
+            org.opencontainers.image.title=ardupilot/ardupilot-dev-aarch64
+            org.opencontainers.image.description=${{ github.event.repository.name }}
+            org.opencontainers.image.url=${{ github.event.repository.html_url }}
+            org.opencontainers.image.source=${{ github.event.repository.clone_url }}
+            org.opencontainers.image.version=${{ steps.prep.outputs.version }}
+            org.opencontainers.image.created=${{ steps.prep.outputs.created }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
+            org.label-schema.vcs-ref=${{ github.sha }}
+            org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
+
+      - name: Build ardupilot-dev-coverage
         uses: docker/build-push-action@v6
         with:
           context: ./
           file: docker/Dockerfile_dev-coverage
-          tags: ardupilot/ardupilot-dev-coverage:${{ steps.prep.outputs.version }},ardupilot/ardupilot-dev-coverage:latest
+          tags: ${{ steps.tags.outputs.coverage }}
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
           build-args: "TAG=${{ steps.prep.outputs.version }}"
-          push: false
-          load: true
+          pull: false
           labels: |
-            org.opencontainers.image.title=${{ steps.prep.outputs.img_name }}
+            org.opencontainers.image.title=ardupilot/ardupilot-dev-coverage
             org.opencontainers.image.description=${{ github.event.repository.name }}
             org.opencontainers.image.url=${{ github.event.repository.html_url }}
             org.opencontainers.image.source=${{ github.event.repository.clone_url }}
@@ -311,29 +209,38 @@ jobs:
             org.label-schema.vcs-ref=${{ github.sha }}
             org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
 
-      - name: Pull Base Docker image
-        if: ${{ github.event_name != 'pull_request' && matrix.config == 'armhf-musl' }}
-        run: |
-          docker pull ardupilot/ardupilot-dev-armhf:${{ steps.prep.outputs.version }}
-          docker tag ardupilot/ardupilot-dev-armhf:${{ steps.prep.outputs.version }} ardupilot/ardupilot-dev-armhf:latest
-
-      - name: Pull Base Docker image
-        if: ${{ github.event_name != 'pull_request' && matrix.config == 'periph' }}
-        run: |
-          docker pull ardupilot/ardupilot-dev-coverage:${{ steps.prep.outputs.version }}
-          docker tag ardupilot/ardupilot-dev-coverage:${{ steps.prep.outputs.version }} ardupilot/ardupilot-dev-coverage:latest
-
-      - name: Build ardupilot-dev-${{matrix.config}} images
+      - name: Build ardupilot-dev-armhf-musl
         uses: docker/build-push-action@v6
         with:
           context: ./
-          file: docker/Dockerfile_dev-${{matrix.config}}
-          tags: ${{ steps.prep.outputs.tags }}
-          build-args: "TAG=${{ steps.prep.outputs.version }}"
+          file: docker/Dockerfile_dev-armhf-musl
+          tags: ${{ steps.tags.outputs.armhf_musl }}
           push: ${{ github.event_name != 'pull_request' }}
+          build-args: "TAG=${{ steps.prep.outputs.version }}"
           pull: false
           labels: |
-            org.opencontainers.image.title=${{ steps.prep.outputs.img_name }}
+            org.opencontainers.image.title=ardupilot/ardupilot-dev-armhf-musl
+            org.opencontainers.image.description=${{ github.event.repository.name }}
+            org.opencontainers.image.url=${{ github.event.repository.html_url }}
+            org.opencontainers.image.source=${{ github.event.repository.clone_url }}
+            org.opencontainers.image.version=${{ steps.prep.outputs.version }}
+            org.opencontainers.image.created=${{ steps.prep.outputs.created }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
+            org.label-schema.vcs-ref=${{ github.sha }}
+            org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
+
+      - name: Build ardupilot-dev-periph
+        uses: docker/build-push-action@v6
+        with:
+          context: ./
+          file: docker/Dockerfile_dev-periph
+          tags: ${{ steps.tags.outputs.periph }}
+          push: ${{ github.event_name != 'pull_request' }}
+          build-args: "TAG=${{ steps.prep.outputs.version }}"
+          pull: false
+          labels: |
+            org.opencontainers.image.title=ardupilot/ardupilot-dev-periph
             org.opencontainers.image.description=${{ github.event.repository.name }}
             org.opencontainers.image.url=${{ github.event.repository.html_url }}
             org.opencontainers.image.source=${{ github.event.repository.clone_url }}
