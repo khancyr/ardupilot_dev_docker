@@ -22,11 +22,13 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Prepare
         id: prep
@@ -49,7 +51,7 @@ jobs:
 
       - name: Login to DockerHub
         if: ${{ github.event_name != 'pull_request' }}
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
@@ -83,7 +85,7 @@ jobs:
           echo "periph=$(make_tags ${BASE}-periph 1)" >> $GITHUB_OUTPUT
 
       - name: Build ardupilot-dev-base
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./
           file: docker/Dockerfile_dev-base
@@ -103,7 +105,7 @@ jobs:
             org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
 
       - name: Build ardupilot-dev-clang
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./
           file: docker/Dockerfile_dev-clang
@@ -124,7 +126,7 @@ jobs:
             org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
 
       - name: Build ardupilot-dev-chibios
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./
           file: docker/Dockerfile_dev-chibios
@@ -145,7 +147,7 @@ jobs:
             org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
 
       - name: Build ardupilot-dev-armhf
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./
           file: docker/Dockerfile_dev-armhf
@@ -167,7 +169,7 @@ jobs:
             org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
 
       - name: Build ardupilot-dev-aarch64
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./
           file: docker/Dockerfile_dev-aarch64
@@ -188,7 +190,7 @@ jobs:
             org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
 
       - name: Build ardupilot-dev-coverage
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./
           file: docker/Dockerfile_dev-coverage
@@ -210,7 +212,7 @@ jobs:
             org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
 
       - name: Build ardupilot-dev-armhf-musl
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./
           file: docker/Dockerfile_dev-armhf-musl
@@ -231,7 +233,7 @@ jobs:
             org.label-schema.vcs-url=${{ github.event.repository.clone_url }}
 
       - name: Build ardupilot-dev-periph
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./
           file: docker/Dockerfile_dev-periph
