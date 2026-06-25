@@ -1,48 +1,55 @@
 # syntax=docker/dockerfile:1
 ARG ROS_DISTRO=humble
-FROM ros:${ROS_DISTRO}-ros-base AS main-setup
+FROM ros:"${ROS_DISTRO}"-ros-base AS main-setup
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install --no-install-recommends -y \
-    lsb-release \
-    sudo \
-    wget \
-    software-properties-common \
     astyle \
     build-essential  \
     ccache \
-    g++ \
-    gdb \
-    gawk \
-    git \
-    make \
     cmake \
-    ninja-build \
+    default-jre \
+    g++ \
+    gawk \
+    gdb \
+    git \
+    libpython3-stdlib \
     libtool \
+    libtool-bin \
     libxml2-dev \
     libxml2-utils \
     libxslt1-dev \
+    lsb-release \
+    make \
+    ninja-build \
+    openjdk-11-jre-headless \
+    ppp \
+    python-is-python3 \
+    python3-dev \
     python3-numpy \
     python3-pyparsing \
     python3-serial \
-    python-is-python3 \
-    libpython3-stdlib \
-    libtool-bin \
-    zip \
-    default-jre \
-    socat \
+    ros-"${ROS_DISTRO}"-launch-pytest \
     ros-dev-tools \
-    ros-${ROS_DISTRO}-launch-pytest \
+    socat \
+    software-properties-common \
+    sudo \
+    wget \
+    zip \
     && apt-get clean \
     && apt-get -y autoremove \
     && apt-get autoclean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=on
+
 # TAKEN from https://github.com/docker-library/python/blob/a58630aef106c8efd710011c6a2a0a1d551319a0/3.11/bullseye/Dockerfile
 # if this is called "PIP_VERSION", pip explodes with "ValueError: invalid truth value '<VERSION>'"
-ENV PYTHON_PIP_VERSION=25.0.1
+ENV PYTHON_PIP_VERSION=26.1.2
 # https://github.com/docker-library/python/issues/365
-ENV PYTHON_SETUPTOOLS_VERSION=65.5.1
+ENV PYTHON_SETUPTOOLS_VERSION=78.1.0
 # https://github.com/pypa/get-pip
 ENV PYTHON_GET_PIP_URL=https://bootstrap.pypa.io/get-pip.py
 
@@ -59,12 +66,16 @@ RUN set -eux; \
         --break-system-packages \
 		"pip==$PYTHON_PIP_VERSION" \
 		"setuptools==$PYTHON_SETUPTOOLS_VERSION" \
+        wheel \
 	; \
 	rm -f get-pip.py; \
 	\
-	pip --version
+	pip --version; \
+    mkdir -p ~/.config/pip \
+    && echo "[global]" >> ~/.config/pip/pip.conf \
+    && echo "break-system-packages = true" >> ~/.config/pip/pip.conf
 
-RUN python -m pip install --no-cache-dir --break-system-packages -U wheel future lxml pexpect flake8 empy==3.3.4 pyelftools tabulate pymavlink pre-commit junitparser
+RUN python -m pip install --no-cache-dir -U wheel future lxml pexpect fastcrc flake8 pycodestyle empy==3.3.4 pyelftools tabulate pre-commit junitparser ptyprocess dronecan pymavlink requests mock
 
 RUN mkdir -p /__w/ardupilot/ardupilot && git config --global --add safe.directory /__w/ardupilot/ardupilot && git config --system --add safe.directory /__w/ardupilot/ardupilot
 
@@ -106,7 +117,7 @@ RUN ln -s /usr/bin/ccache /usr/lib/ccache/arm-none-eabi-g++ \
 # Set STM32 toolchain to the PATH
 ENV PATH="/opt/$ARM_ROOT/bin:$PATH"
 
-RUN mkdir -p $HOME/arm-gcc \
+RUN mkdir -p "$HOME"/arm-gcc \
     && ln -s -f /opt/gcc-arm-none-eabi-10/ g++-10.2.1
 
 
@@ -124,3 +135,4 @@ ENV TZ=UTC
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=on

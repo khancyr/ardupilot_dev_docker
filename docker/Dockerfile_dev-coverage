@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 ARG TAG="latest"
-FROM ardupilot/ardupilot-dev-base:${TAG}
+FROM ardupilot/ardupilot-dev-base:"${TAG}"
 
 RUN apt-get update && apt-get install --no-install-recommends -y \
     lcov \
