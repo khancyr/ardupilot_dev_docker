@@ -9,22 +9,25 @@ on:
     - cron: '0 0 * * *'  # every day at midnight
   workflow_dispatch:
   pull_request:
-    branches: master
+    branches:
+      - master
   push:
-    branches: master
+    branches:
+      - master
     tags:
       - 'v*.*.*'
 
 jobs:
   build-ros:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
     steps:
-      # git checkout the PR
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       -
         name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
 
       -
@@ -65,14 +68,14 @@ jobs:
 
       - name: Login to DockerHub
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       # Only push if it comes from tagging
       - name: Build ardupilot-dev-ros images
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./
           file: docker/Dockerfile_dev-ros
