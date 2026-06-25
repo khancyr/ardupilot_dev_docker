@@ -29,6 +29,8 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+        with:
+          driver: docker
 
       - name: Prepare
         id: prep
@@ -86,12 +88,13 @@ jobs:
 
       - name: Build ardupilot-dev-base
         uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_SUMMARY: false
         with:
           context: ./
           file: docker/Dockerfile_dev-base
           tags: ${{ steps.tags.outputs.base }}
           push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'pull_request' }}
           labels: |
             org.opencontainers.image.title=ardupilot/ardupilot-dev-base
             org.opencontainers.image.description=${{ github.event.repository.name }}
@@ -106,6 +109,8 @@ jobs:
 
       - name: Build ardupilot-dev-clang
         uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_SUMMARY: false
         with:
           context: ./
           file: docker/Dockerfile_dev-clang
@@ -127,6 +132,8 @@ jobs:
 
       - name: Build ardupilot-dev-chibios
         uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_SUMMARY: false
         with:
           context: ./
           file: docker/Dockerfile_dev-chibios
@@ -148,12 +155,13 @@ jobs:
 
       - name: Build ardupilot-dev-armhf
         uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_SUMMARY: false
         with:
           context: ./
           file: docker/Dockerfile_dev-armhf
           tags: ${{ steps.tags.outputs.armhf }}
           push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'pull_request' }}
           build-args: "TAG=${{ steps.prep.outputs.version }}"
           pull: false
           labels: |
@@ -170,6 +178,8 @@ jobs:
 
       - name: Build ardupilot-dev-aarch64
         uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_SUMMARY: false
         with:
           context: ./
           file: docker/Dockerfile_dev-aarch64
@@ -191,12 +201,13 @@ jobs:
 
       - name: Build ardupilot-dev-coverage
         uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_SUMMARY: false
         with:
           context: ./
           file: docker/Dockerfile_dev-coverage
           tags: ${{ steps.tags.outputs.coverage }}
           push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'pull_request' }}
           build-args: "TAG=${{ steps.prep.outputs.version }}"
           pull: false
           labels: |
@@ -213,6 +224,8 @@ jobs:
 
       - name: Build ardupilot-dev-armhf-musl
         uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_SUMMARY: false
         with:
           context: ./
           file: docker/Dockerfile_dev-armhf-musl
@@ -234,6 +247,8 @@ jobs:
 
       - name: Build ardupilot-dev-periph
         uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_SUMMARY: false
         with:
           context: ./
           file: docker/Dockerfile_dev-periph
