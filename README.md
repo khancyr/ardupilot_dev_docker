@@ -42,4 +42,4 @@ In order to publish them to DockerHub, we need to make a release and tag the ima
 
 The repo setting is quite simple, it needs GitHub Action and an account on DockerHub.
 In order to be able to publish the image on DockerHub, you need to set two secrets on your repo setting :
-`DOCKER_USERNAME` and `DOCKER_PASSWORD`
+`DOCKER_USERNAME` and `DOCKERHUB_TOKEN`
